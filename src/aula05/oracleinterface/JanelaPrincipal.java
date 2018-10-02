@@ -98,21 +98,23 @@ public class JanelaPrincipal {
         pPainelDeInsecaoDeDados.add(new JTextField("Digite aqui"));
         tabbedPane.add(pPainelDeInsecaoDeDados, "Inserção");
 
-        this.DefineEventos();
         j.setVisible(true);
 
         bd = new DBFuncionalidades(jtAreaDeStatus);
         if (bd.conectar()) {
             bd.pegarNomesDeTabelas(jc);
+            bd.exibirMetadadosColunas((String) jc.getSelectedItem());
         }
+        this.DefineEventos();
     }
+    
 
     private void DefineEventos() {
-        jc.addActionListener(
-                new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                JComboBox jcTemp = (JComboBox) e.getSource();
-                jtAreaDeStatus.setText((String) jcTemp.getSelectedItem());
+        jc.addItemListener(new java.awt.event.ItemListener() {
+            @Override
+            public void itemStateChanged(java.awt.event.ItemEvent evt) {
+                JComboBox jcTemp = (JComboBox) evt.getSource();
+                bd.exibirMetadadosColunas((String) jcTemp.getSelectedItem());
             }
         });
     }
