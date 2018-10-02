@@ -54,6 +54,7 @@ public class JanelaPrincipal {
         jtAreaDeStatus = new JTextArea();
         jtAreaDeStatus.setText("Aqui é sua área de status");
         pPainelDeBaixo.add(jtAreaDeStatus);
+        jtAreaDeStatus.setTabSize(15);
 
         /*Painel tabulado na parte central (CENTER)*/
         tabbedPane = new JTabbedPane();
@@ -111,7 +112,6 @@ public class JanelaPrincipal {
 
     private void DefineEventos() {
         jc.addItemListener(new java.awt.event.ItemListener() {
-            @Override
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 JComboBox jcTemp = (JComboBox) evt.getSource();
                 bd.exibirMetadadosColunas((String) jcTemp.getSelectedItem());

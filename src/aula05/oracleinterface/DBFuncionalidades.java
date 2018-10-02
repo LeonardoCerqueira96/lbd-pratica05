@@ -9,6 +9,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Collections;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JComboBox;
@@ -85,14 +86,14 @@ public class DBFuncionalidades {
     //
     
     public void exibirMetadadosColunas(String sTableName) {
-        jtAreaDeStatus.setText("Colunas da tabela " + sTableName + ": \n");
+        jtAreaDeStatus.setText("NOME\tTIPO\tPODE NULL\tTAMANHO\n\n");
         pegarMetadadosColunas(sTableName);
         try {
             while (rs.next()) {
                 jtAreaDeStatus.append( 
-                    rs.getString("COLUMN_NAME") + ": " +
-                    rs.getString("DATA_TYPE") + ", " +
-                    rs.getString("NULLABLE") + ", " +
+                    rs.getString("COLUMN_NAME") + "\t" +
+                    rs.getString("DATA_TYPE") + "\t" +
+                    rs.getString("NULLABLE") + "\t" +
                     rs.getString("DATA_LENGTH") + "\n"
                 );
             }
