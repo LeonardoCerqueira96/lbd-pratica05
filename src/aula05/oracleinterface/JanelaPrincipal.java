@@ -105,6 +105,7 @@ public class JanelaPrincipal {
         if (bd.conectar()) {
             bd.pegarNomesDeTabelas(jc);
             bd.exibirMetadadosColunas((String) jc.getSelectedItem());
+            bd.criarColunasDeInsercao(pPainelDeInsecaoDeDados, (String) jc.getSelectedItem());
         }
         this.DefineEventos();
     }
