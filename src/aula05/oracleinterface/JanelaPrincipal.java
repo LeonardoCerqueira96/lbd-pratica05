@@ -115,6 +115,7 @@ public class JanelaPrincipal {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 JComboBox jcTemp = (JComboBox) evt.getSource();
                 bd.exibirMetadadosColunas((String) jcTemp.getSelectedItem());
+                bd.criarColunasDeInsercao(pPainelDeInsecaoDeDados, (String) jcTemp.getSelectedItem());
             }
         });
     }

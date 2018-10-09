@@ -4,6 +4,7 @@
  */
 package aula05.oracleinterface;
 
+import java.awt.GridLayout;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -12,9 +13,14 @@ import java.sql.Statement;
 import java.util.Collections;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
+import javax.swing.JTextField;
 
 /**
  *
@@ -34,7 +40,7 @@ public class DBFuncionalidades {
         try {
             DriverManager.registerDriver (new oracle.jdbc.OracleDriver());
             connection = DriverManager.getConnection(
-                    "jdbc:oracle:thin:@192.168.183.15:1521:orcl",
+                    "jdbc:oracle:thin:@grad.icmc.usp.br:15215:orcl",
                     "L8937483",
                     "Furukawa*Nagisa18");
             return true;
@@ -78,6 +84,27 @@ public class DBFuncionalidades {
         }
     }
     
+    public ResultSet pegarRestricoesDeColuna(String sTableName, String sColumnName, Statement statement) {
+        String sql = 
+        "SELECT A.TABLE_NAME, A.COLUMN_NAME, A.CONSTRAINT_NAME, C.CONSTRAINT_TYPE, C.SEARCH_CONDITION," +
+        "C_PK.TABLE_NAME R_TABLE_NAME, A_PK.COLUMN_NAME A_CL" +
+        "   FROM USER_CONS_COLUMNS A" +
+        "   JOIN USER_CONSTRAINTS C ON A.CONSTRAINT_NAME = C.CONSTRAINT_NAME" +
+        "   LEFT OUTER JOIN USER_CONSTRAINTS C_PK ON C.R_CONSTRAINT_NAME = C_PK.CONSTRAINT_NAME" +
+        "   LEFT OUTER JOIN USER_CONS_COLUMNS A_PK ON C_PK.CONSTRAINT_NAME = A_PK.CONSTRAINT_NAME" + 
+        "   WHERE A.TABLE_NAME = '" + sTableName + "'" +
+        "       AND A.COLUMN_NAME = '" + sColumnName + "'";
+        ResultSet res;
+        try {
+            res = statement.executeQuery(sql);
+        } catch (SQLException e) {
+            jtAreaDeStatus.setText("Erro na consulta: \"" + sql + "\" - " + e.getMessage());
+            return null;
+        }
+        
+        return res;
+    }
+    
     public void exibeDados(JTable tATable, String sTableName){
         /*Aqui preencho a tabela com os dados*/
     }
@@ -98,6 +125,46 @@ public class DBFuncionalidades {
                 );
             }
             stmt.close();
+        } catch (SQLException e) {
+            jtAreaDeStatus.setText("Erro: \"" + e + "\"");
+        }
+    }
+    
+    public void criarColunasDeInsercao(JPanel pPanelDeInsercao, String sTableName) {
+        pegarMetadadosColunas(sTableName);
+        
+        pPanelDeInsercao.removeAll();
+        pPanelDeInsercao.revalidate();
+        pPanelDeInsercao.repaint();
+        
+        try {
+            int size = 0;
+            while (rs.next()) {
+                Statement statement = connection.createStatement();
+                String sColName = rs.getString("COLUMN_NAME");
+                ResultSet res = pegarRestricoesDeColuna(sTableName, sColName, statement);
+                
+                while (res.next()) {
+                    String type = res.getString("CONSTRAINT_TYPE");
+                    if ("C".equals(type)) {
+                        String incheck_regex = "^\\s*\\w+\\s+IN\\s+\\(((?:\\s*'?\\w+'?,?\\s*)+)\\)$";
+                        Pattern incheck_pattern = Pattern.compile(incheck_regex);
+                        
+                        Matcher incheck_matcher = incheck_pattern.matcher(res.getString("SEARCH_CONDITION"));
+                        if (incheck_matcher.find()) {
+                            System.out.println("Found value: " + incheck_matcher.group(1).replace("'", ""));
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                statement.close();
+                
+                pPanelDeInsercao.add(new JLabel(sColName));
+                pPanelDeInsercao.add(new JTextField("Digite aqui..."));
+                size++;
+            }
+            pPanelDeInsercao.setLayout(new GridLayout(size, 2));
         } catch (SQLException e) {
             jtAreaDeStatus.setText("Erro: \"" + e + "\"");
         }
