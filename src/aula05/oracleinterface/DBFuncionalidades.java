@@ -5,6 +5,7 @@
 package aula05.oracleinterface;
 
 import java.awt.GridLayout;
+import java.awt.event.ItemEvent;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -20,6 +21,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -46,7 +48,7 @@ public class DBFuncionalidades {
         try {
             DriverManager.registerDriver (new oracle.jdbc.OracleDriver());
             connection = DriverManager.getConnection(
-                    "jdbc:oracle:thin:@192.168.183.15:1521:orcl",
+                    "jdbc:oracle:thin:@grad.icmc.usp.br:15215:orcl",
                     "L8937483",
                     "Furukawa*Nagisa18");
             return true;
@@ -91,6 +93,22 @@ public class DBFuncionalidades {
         }
     }
     
+    public ResultSet pegarMetadadosColunas(String sTableName, Statement statement) {
+        String sql = 
+        "SELECT C.COLUMN_NAME, C.DATA_TYPE, C.NULLABLE, C.DATA_LENGTH " +
+        "   FROM USER_TAB_COLUMNS C " +
+        "   WHERE C.TABLE_NAME = '" + sTableName + "'";
+        ResultSet res;
+        try {
+            res = statement.executeQuery(sql);
+        } catch (SQLException e) {
+            jtAreaDeStatus.setText("Erro na consulta: \"" + sql + "\" - " + e.getMessage());
+            return null;
+        }
+        
+        return res;
+    }
+    
     public ResultSet pegarRestricoesDeColuna(String sTableName, String sColumnName, Statement statement) {
         String sql = 
         "SELECT A.TABLE_NAME, A.COLUMN_NAME, A.CONSTRAINT_NAME, C.CONSTRAINT_TYPE, C.SEARCH_CONDITION," +
@@ -125,6 +143,81 @@ public class DBFuncionalidades {
         return res;
     }
     
+    public boolean checarValidadeChaveComposta(String sPkTable, List<String> sPkColumns, List<String> values, Statement statement) {
+        String sql = "SELECT * FROM " + sPkTable + " T WHERE ";
+        for (int i = 0; i < sPkColumns.size(); i++) {
+            sql += sPkColumns.get(i) + " = '" + values.get(i) + "'";
+            sql += ((i < (sPkColumns.size() - 1)) ? " AND " : ""); 
+        }
+                
+        boolean pairPresent = false;
+        ResultSet res;
+        try {
+            res = statement.executeQuery(sql);
+            while(res.next()) { pairPresent = true; }
+            res.close();
+        } catch (SQLException e) {
+            jtAreaDeStatus.setText("Erro na consulta: \"" + sql + "\" - " + e.getMessage());
+        }
+        
+        return pairPresent;
+    }
+    
+    public List<String> pegarValoresDeInsercao(JPanel panel, int numComp) {
+        List<String> values = new ArrayList<String>();
+        for (int i = 0; i < numComp; i++) {
+            if (panel.getComponent(i * 2 + 1) instanceof JTextField) {
+                JTextField comp = (JTextField) panel.getComponent(i * 2 + 1);
+                values.add(comp.getText());
+            } else {
+                JComboBox comp = (JComboBox) panel.getComponent(i * 2 + 1);
+                values.add((String) comp.getSelectedItem());
+            }
+        }
+        return values;
+    }
+    
+    public boolean inserirDados(String sTableName, List<String> values) {
+        String sql = "INSERT INTO " + sTableName + " (";
+        try {
+            Statement colInfoStmt = connection.createStatement();
+            ResultSet colInfoRes = pegarMetadadosColunas(sTableName, colInfoStmt);
+            
+            //List<String> cols = new ArrayList<String>();
+            List<String> types = new ArrayList<String>();
+            while (colInfoRes.next()) {
+                //cols.add(colInfoRes.getString("COLUMN_NAME"));
+                sql += colInfoRes.getString("COLUMN_NAME") + ", ";
+                types.add(colInfoRes.getString("DATA_TYPE"));
+            }
+            sql = sql.substring(0, sql.length() - 2) + ") VALUES (";
+            for (int i = 0; i < types.size(); i++) {
+                if (types.get(i).equals("BLOB")) {
+                    sql += "EMPTY_BLOB(), ";
+                }
+                else if (types.get(i).equals("DATE")) {
+                    sql += "TO_DATE('" + values.get(i) + "', 'DD/MM/RR'), ";
+                }
+                else if (values.get(i).equals("")){
+                    sql += "NULL, ";
+                }
+                else {
+                    sql += "'" + values.get(i) + "', ";
+                }
+            }
+            sql = sql.substring(0, sql.length() - 2) + ")";
+            colInfoRes.close();
+            colInfoStmt.close();
+            
+            Statement insertStmt = connection.createStatement();
+            insertStmt.executeUpdate(sql);
+        } catch (SQLException e) {
+            jtAreaDeStatus.setText("Erro: \"" + e + "\"");
+            return false;
+        }
+        return true;
+    }
+    
     public void exibeDados(JTable tATable, String sTableName){
         /*Aqui preencho a tabela com os dados*/
     }
@@ -151,7 +244,7 @@ public class DBFuncionalidades {
         }
     }
     
-    public void criarColunasDeInsercao(JPanel pPanelDeInsercao, String sTableName) {
+    public void criarColunasDeInsercao(JPanel pPanelDeInsercao, final String sTableName) {
         pegarMetadadosColunas(sTableName);
         
         pPanelDeInsercao.removeAll();
@@ -218,35 +311,65 @@ public class DBFuncionalidades {
                 }
                 pPanelDeInsercao.add(new JLabel(sColName + (rs.getString("NULLABLE").equals("N") ? "*" : "")));
                 pPanelDeInsercao.add(addComboBox ? insertCb : new JTextField("Digite aqui..."));
-               
-                List<JComboBox> cbs = new ArrayList<JComboBox>();
-                List<String> pkCls = new ArrayList<String>();
-                String pkTable = "";
-                Iterator outerIt = foreignKeys.entrySet().iterator();
-                while (outerIt.hasNext()) {
-                    Map.Entry pair = (Map.Entry)outerIt.next();
-                    for (List<String> fkRefs : (List<List<String>>) pair.getValue()) {
-                        cbs.add((JComboBox)(pPanelDeInsercao.getComponentAt(Integer.parseInt(fkRefs.get(0)), 1)));
-                        pkTable = fkRefs.get(1);
-                        pkCls.add(fkRefs.get(2));
-                    }
-                    for (JComboBox cb : cbs) { 
-                        cb.addItemListener(new java.awt.event.ItemListener() {
-                            public void itemStateChanged(java.awt.event.ItemEvent evt) {
-                                
-                            }
-                        });
-                    }
-                }
                 
                 consRs.close();
                 consStmt.close();
                     
                 size++;
             }
-            pPanelDeInsercao.setLayout(new GridLayout(size, 2));
+            JButton botaoInserir = new JButton("Inserir");
+            botaoInserir.addActionListener(new java.awt.event.ActionListener() {
+                public void actionPerformed(java.awt.event.ActionEvent e) {
+                    JPanel panel = (JPanel) ((JButton) e.getSource()).getParent();
+                    List<String> values = pegarValoresDeInsercao(panel, (panel.getComponentCount() / 2) - 1);
+                    boolean success = inserirDados(sTableName, values);
+                    ((JLabel) panel.getComponent(panel.getComponentCount() - 1))
+                        .setText(success ? "Inserção feita com êxito" : "Inserção falhou");
+                    if (success) { exibirMetadadosColunas(sTableName); }   
+                }
+            });
+            pPanelDeInsercao.add(botaoInserir);
+            pPanelDeInsercao.add(new JLabel());
+            pPanelDeInsercao.setLayout(new GridLayout(size + 1, 15, 2, 2));
             
-            
+            final List<JComboBox> cbs = new ArrayList<JComboBox>();
+            final List<String> pkCls = new ArrayList<String>();
+            final List<String> pkTable = new ArrayList<String>();
+            Iterator outerIt = foreignKeys.entrySet().iterator();
+            while (outerIt.hasNext()) {
+                Map.Entry pair = (Map.Entry)outerIt.next();
+                for (List<String> fkRefs : (List<List<String>>) pair.getValue()) {
+                    cbs.add((JComboBox)(pPanelDeInsercao.getComponent(Integer.parseInt(fkRefs.get(0)) * 2 + 1)));
+                    pkTable.add(fkRefs.get(1));
+                    pkCls.add(fkRefs.get(2));
+                }
+                if (pkCls.size() < 2) { continue; }
+                for (JComboBox cb : cbs) { 
+                    cb.addItemListener(new java.awt.event.ItemListener() {
+                        public void itemStateChanged(java.awt.event.ItemEvent evt) {
+                            if (evt.getStateChange() == ItemEvent.SELECTED)
+                            {
+                                List<String> values = new ArrayList<String>();
+                                for (JComboBox v : cbs) {
+                                    values.add((String) v.getSelectedItem());
+                                }
+                                try {
+                                    Statement checkPairStmt = connection.createStatement();
+                                    boolean hasPair = checarValidadeChaveComposta(pkTable.get(0), pkCls, values, checkPairStmt);
+                                    checkPairStmt.close();
+                                    if (!hasPair) {
+                                        jtAreaDeStatus.setText("Erro: Combinacao " + values + "nao existe");
+                                    } else {
+                                        exibirMetadadosColunas(pkTable.get(0));
+                                    }
+                                } catch (SQLException e) {
+                                    jtAreaDeStatus.setText("Erro: \"" + e + "\"");
+                                }
+                            }
+                        }
+                    });
+                }
+            }
             
             rs.close();
             stmt.close();

@@ -8,6 +8,7 @@ import java.awt.BorderLayout;
 import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -114,9 +115,12 @@ public class JanelaPrincipal {
     private void DefineEventos() {
         jc.addItemListener(new java.awt.event.ItemListener() {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
-                JComboBox jcTemp = (JComboBox) evt.getSource();
-                bd.exibirMetadadosColunas((String) jcTemp.getSelectedItem());
-                bd.criarColunasDeInsercao(pPainelDeInsecaoDeDados, (String) jcTemp.getSelectedItem());
+                if (evt.getStateChange() == ItemEvent.SELECTED)
+                {
+                    JComboBox jcTemp = (JComboBox) evt.getSource();
+                    bd.exibirMetadadosColunas((String) jcTemp.getSelectedItem());
+                    bd.criarColunasDeInsercao(pPainelDeInsecaoDeDados, (String) jcTemp.getSelectedItem());
+                }
             }
         });
     }
