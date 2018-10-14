@@ -34,6 +34,7 @@ public class JanelaPrincipal {
     JPanel pPainelDeExibicaoDeDados;
     JTable jt;
     JPanel pPainelDeInsecaoDeDados;
+    JPanel pPainelDeBuscaDeDados;
     DBFuncionalidades bd;
 
     public void ExibeJanelaPrincipal() {
@@ -99,6 +100,10 @@ public class JanelaPrincipal {
         pPainelDeInsecaoDeDados.add(new JLabel("Coluna3"));
         pPainelDeInsecaoDeDados.add(new JTextField("Digite aqui"));
         tabbedPane.add(pPainelDeInsecaoDeDados, "Inserção");
+        
+        // Tab de busca
+        pPainelDeBuscaDeDados = new JPanel();
+        tabbedPane.add(pPainelDeBuscaDeDados, "Busca");
 
         j.setVisible(true);
 
@@ -107,6 +112,7 @@ public class JanelaPrincipal {
             bd.pegarNomesDeTabelas(jc);
             bd.exibirMetadadosColunas((String) jc.getSelectedItem());
             bd.criarColunasDeInsercao(pPainelDeInsecaoDeDados, (String) jc.getSelectedItem());
+            bd.criarCamposDeBusca(pPainelDeBuscaDeDados, (String) jc.getSelectedItem());
         }
         this.DefineEventos();
     }
@@ -120,6 +126,7 @@ public class JanelaPrincipal {
                     JComboBox jcTemp = (JComboBox) evt.getSource();
                     bd.exibirMetadadosColunas((String) jcTemp.getSelectedItem());
                     bd.criarColunasDeInsercao(pPainelDeInsecaoDeDados, (String) jcTemp.getSelectedItem());
+                    bd.criarCamposDeBusca(pPainelDeBuscaDeDados, (String) jcTemp.getSelectedItem());
                 }
             }
         });

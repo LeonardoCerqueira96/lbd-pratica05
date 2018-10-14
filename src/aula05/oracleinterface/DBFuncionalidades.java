@@ -4,6 +4,7 @@
  */
 package aula05.oracleinterface;
 
+import java.awt.Component;
 import java.awt.GridLayout;
 import java.awt.event.ItemEvent;
 import java.sql.Connection;
@@ -11,6 +12,9 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -163,9 +167,9 @@ public class DBFuncionalidades {
         return pairPresent;
     }
     
-    public List<String> pegarValoresDeInsercao(JPanel panel, int numComp) {
+    public List<String> pegarValoresDeInsercao(JPanel panel, int numComp, int offset) {
         List<String> values = new ArrayList<String>();
-        for (int i = 0; i < numComp; i++) {
+        for (int i = offset; i < numComp; i++) {
             if (panel.getComponent(i * 2 + 1) instanceof JTextField) {
                 JTextField comp = (JTextField) panel.getComponent(i * 2 + 1);
                 values.add(comp.getText());
@@ -173,6 +177,56 @@ public class DBFuncionalidades {
                 JComboBox comp = (JComboBox) panel.getComponent(i * 2 + 1);
                 values.add((String) comp.getSelectedItem());
             }
+        }
+        return values;
+    }
+    
+    public ResultSet pegarChavesPrimarias(String sTableName, Statement statement) {
+        String sql =
+            "SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME, COLS.POSITION, CONS.STATUS" +
+            "   FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS" +
+            "   WHERE COLS.TABLE_NAME = '" + sTableName + "'" +
+            "       AND CONS.CONSTRAINT_TYPE = 'P'" +
+            "       AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME" +
+            "   ORDER BY COLS.TABLE_NAME, COLS.POSITION";
+        ResultSet res;
+        try {
+            res = statement.executeQuery(sql);
+        } catch (SQLException e) {
+            jtAreaDeStatus.setText("Erro na consulta: \"" + sql + "\" - " + e.getMessage());
+            return null;
+        }
+        
+        return res;
+    }
+    
+    public ResultSet pegarDadosBuscados(String sTableName, List<String> pkCols, List<String> values, Statement statement) {        
+        String sql = "SELECT * ";
+        ResultSet res;
+        
+        try {            
+            sql += " FROM " + sTableName + " T ";
+            
+            sql += "WHERE ";
+            for (int i = 0; i < pkCols.size(); i++) {
+                sql += "T." + pkCols.get(i) + " = '" + values.get(i) + "'";
+                sql += ((i < (pkCols.size() - 1)) ? " AND " : "");
+            }
+            
+            res = statement.executeQuery(sql);
+        } catch (SQLException e) {
+            jtAreaDeStatus.setText("Erro na consulta: \"" + sql + "\" - " + e.getMessage());
+            return null;
+        }
+        
+        return res;
+    }
+    
+    public List<String> pegarValoresDeBusca(JPanel panel, int numPk) {
+        List<String> values = new ArrayList<String>();
+        for (int i = 0; i < numPk; i++) {
+            JTextField comp = (JTextField) panel.getComponent(i * 2 + 1);
+            values.add(comp.getText());
         }
         return values;
     }
@@ -206,6 +260,50 @@ public class DBFuncionalidades {
                 }
             }
             sql = sql.substring(0, sql.length() - 2) + ")";
+            colInfoRes.close();
+            colInfoStmt.close();
+            
+            Statement insertStmt = connection.createStatement();
+            insertStmt.executeUpdate(sql);
+        } catch (SQLException e) {
+            jtAreaDeStatus.setText("Erro: \"" + e + "\"");
+            return false;
+        }
+        return true;
+    }
+    
+    public boolean atualizarDados(String sTableName, List<String> newValues, List<String> pkCols, Map<String, String> oldValues) {
+        String sql = "UPDATE " + sTableName + " SET ";
+        try {
+            Statement colInfoStmt = connection.createStatement();
+            ResultSet colInfoRes = pegarMetadadosColunas(sTableName, colInfoStmt);
+            
+            int i = 0;
+            while (colInfoRes.next()) {
+                String col = colInfoRes.getString("COLUMN_NAME");
+                sql += col + " = ";
+                String type = colInfoRes.getString("DATA_TYPE");
+                if (type.equals("BLOB")) {
+                    sql += "EMPTY_BLOB(), ";
+                }
+                else if (type.equals("DATE")) {
+                    sql += "TO_DATE('" + newValues.get(i) + "', 'DD/MM/RR'), ";
+                }
+                else if (type.equals("")){
+                    sql += "NULL, ";
+                }
+                else {
+                    sql += "'" + newValues.get(i) + "', ";
+                }
+                i++;
+            }
+            sql = sql.substring(0, sql.length() - 2) + " WHERE ";
+            
+            for (i = 0; i < pkCols.size(); i++) {
+                sql += pkCols.get(i) + " = '" + oldValues.get(pkCols.get(i)) + "' AND ";
+            }
+            sql = sql.substring(0, sql.length() - 5);
+
             colInfoRes.close();
             colInfoStmt.close();
             
@@ -321,7 +419,7 @@ public class DBFuncionalidades {
             botaoInserir.addActionListener(new java.awt.event.ActionListener() {
                 public void actionPerformed(java.awt.event.ActionEvent e) {
                     JPanel panel = (JPanel) ((JButton) e.getSource()).getParent();
-                    List<String> values = pegarValoresDeInsercao(panel, (panel.getComponentCount() / 2) - 1);
+                    List<String> values = pegarValoresDeInsercao(panel, (panel.getComponentCount() / 2) - 1, 0);
                     boolean success = inserirDados(sTableName, values);
                     ((JLabel) panel.getComponent(panel.getComponentCount() - 1))
                         .setText(success ? "Inserção feita com êxito" : "Inserção falhou");
@@ -373,6 +471,200 @@ public class DBFuncionalidades {
             
             rs.close();
             stmt.close();
+        } catch (SQLException e) {
+            jtAreaDeStatus.setText("Erro: \"" + e + "\"");
+        }
+    }
+    
+    public void criarCamposDeBusca(final JPanel pPanelDeBusca, final String sTableName) {
+        pPanelDeBusca.removeAll();
+        pPanelDeBusca.revalidate();
+        pPanelDeBusca.repaint();
+        
+        final List<String> pkCols = new ArrayList<String>();
+        try {
+            Statement pkStmt = connection.createStatement();
+            ResultSet pkRes = pegarChavesPrimarias(sTableName, pkStmt);
+            
+            int size = 0;
+            while (pkRes.next()) {
+                String pkName = pkRes.getString("COLUMN_NAME");
+                
+                pPanelDeBusca.add(new JLabel(pkName));
+                pPanelDeBusca.add(new JTextField("Digite aqui..."));
+                
+                pkCols.add(pkName);
+                
+                size++;
+            }
+            pkRes.close();
+            pkStmt.close();
+            
+            Statement colStmt = connection.createStatement();
+            ResultSet colRes = pegarMetadadosColunas(sTableName, colStmt);
+            final List<String> colNames = new ArrayList();
+            while (colRes.next()) {
+                colNames.add(colRes.getString("COLUMN_NAME"));
+            }
+            
+            final Map<String, String> foundMap = new HashMap<String, String>();
+            
+            JButton botaoBuscar = new JButton("Buscar");
+            botaoBuscar.addActionListener(new java.awt.event.ActionListener() {
+                public void actionPerformed(java.awt.event.ActionEvent e) {
+                    JPanel panel = (JPanel) ((JButton) e.getSource()).getParent();
+                    List<String> values = pegarValoresDeBusca(panel, pkCols.size());
+                    
+                    int i = 0;
+                    for (Component c : pPanelDeBusca.getComponents()) {
+                        if (i > (pkCols.size() * 2) + 1){
+                            pPanelDeBusca.remove(c);  
+                        }
+                        i++;
+                    }
+                    pPanelDeBusca.revalidate();
+                    pPanelDeBusca.repaint();
+                    pPanelDeBusca.setLayout(new GridLayout(pkCols.size() + 1, 2));
+                    
+                    try {
+                        Statement shStmt = connection.createStatement();
+                        ResultSet foundRes = pegarDadosBuscados(sTableName, pkCols, values, shStmt);
+                        boolean foundSomething = false;
+                        while (foundRes.next()) {
+                            foundSomething = true;
+                            for (String col : colNames) {
+                                foundMap.put(col, foundRes.getString(col));
+                            }
+                        }
+                        foundRes.close();
+                        shStmt.close();
+                        
+                        if (foundSomething) {
+                            exibirMetadadosColunas(sTableName);
+                            criarCamposDeUpdate(pPanelDeBusca, foundMap, pkCols, sTableName);
+                        } else {
+                            jtAreaDeStatus.setText("Instância com chave(s) " + values + " não foi encontrada");
+                        }
+                    } catch (SQLException ee) {
+                        jtAreaDeStatus.setText("Erro: \"" + ee + "\"");
+                    }
+                }
+            });
+            pPanelDeBusca.add(botaoBuscar);
+            pPanelDeBusca.add(new JLabel());
+            
+            colRes.close();
+            colStmt.close();
+            
+            pPanelDeBusca.setLayout(new GridLayout(size + 1, 2));
+            
+        } catch (SQLException e) {
+            jtAreaDeStatus.setText("Erro: \"" + e + "\"");
+        }
+    }
+    
+    public void criarCamposDeUpdate(JPanel pPanelDeBusca, final Map<String, String> foundMap, final List<String> pkCols, final String sTableName) {
+        try {
+            int size = 0;
+            Map<String, List<List<String>>> foreignKeys = new HashMap<String, List<List<String>>>();
+            
+            Statement colInfoStmt = connection.createStatement();
+            ResultSet colInfoRes = pegarMetadadosColunas(sTableName, colInfoStmt);
+            
+            String value = "";
+            DateFormat defaultDateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+            DateFormat shortDateFormat = new SimpleDateFormat("dd/MM/yy");
+            
+            while (colInfoRes.next()) {
+                String sColName = colInfoRes.getString("COLUMN_NAME");
+                
+                Statement consStmt = connection.createStatement();
+                ResultSet consRes = pegarRestricoesDeColuna(sTableName, sColName, consStmt);
+                
+                JComboBox updateCb = new JComboBox();
+                boolean addComboBox = false;
+                
+                if (colInfoRes.getString("DATA_TYPE").equals("DATE")) {
+                    try {
+                        value = shortDateFormat.format(defaultDateFormat.parse(foundMap.get(sColName)));    
+                    } catch (ParseException ee) {
+                        jtAreaDeStatus.setText("Erro: \"" + ee + "\"");
+                    }
+                } else {
+                    value = foundMap.get(sColName);
+                }
+                
+                while (consRes.next()) {
+                    boolean gotForeignValues = false;
+                    String type = consRes.getString("CONSTRAINT_TYPE");
+                    if ("C".equals(type)) {
+                        String searchCondition = consRes.getString("SEARCH_CONDITION");
+                        String incheckRegex = "^\\s*\\w+\\s+IN\\s+\\(((?:\\s*'?\\w+'?,?\\s*)+)\\)$";
+                        Pattern incheckPattern = Pattern.compile(incheckRegex);
+                        
+                        Matcher incheckMatcher = incheckPattern.matcher(searchCondition);
+                        if (incheckMatcher.find()) {
+                            addComboBox = true;
+                            
+                            String[] values = incheckMatcher.group(1).replaceAll("'", "").replaceAll("\\s+", "").split(",");
+                            for (String valueEl : values) {
+                                updateCb.addItem(valueEl);
+                            }
+                        }
+                    }
+                    else if ("R".equals(type)) {
+                        addComboBox = true;
+                        
+                        String sConsName = consRes.getString("CONSTRAINT_NAME");
+                        String pkTable = consRes.getString("R_TABLE_NAME");
+                        String pkCl = consRes.getString("A_CL");
+                        
+                        List<String> fkRefs = new ArrayList<String>();
+                        if (!foreignKeys.containsKey(sConsName)) {
+                            foreignKeys.put(sConsName, new ArrayList<List<String>>());
+                        }
+                        fkRefs.add(Integer.toString(size));
+                        fkRefs.add(pkTable);
+                        fkRefs.add(pkCl);
+                        foreignKeys.get(sConsName).add(fkRefs);
+                        
+                        if (!gotForeignValues) {
+                            Statement fkStmt = connection.createStatement();
+                            ResultSet fkRs = pegarValoresChaveEstrangeira(pkTable, pkCl, fkStmt);
+                            while (fkRs.next()) {
+                                updateCb.addItem(fkRs.getString(pkCl));
+                            }
+                            updateCb.setSelectedItem(value);
+                            fkRs.close();
+                            fkStmt.close();
+                            
+                            gotForeignValues = true;
+                        }
+                    }
+                }
+                pPanelDeBusca.add(new JLabel(sColName));
+                pPanelDeBusca.add(addComboBox ? updateCb : new JTextField(value));
+                
+                consRes.close();
+                consStmt.close();
+                
+                size++;
+            }
+            JButton botaoUpdate = new JButton("Atualizar");
+            botaoUpdate.addActionListener(new java.awt.event.ActionListener() {
+                public void actionPerformed(java.awt.event.ActionEvent e) {
+                    JPanel panel = (JPanel) ((JButton) e.getSource()).getParent();
+                    List<String> values = pegarValoresDeInsercao(panel, (panel.getComponentCount() / 2) - 1, pkCols.size() + 1);
+                    boolean success = atualizarDados(sTableName, values, pkCols, foundMap);
+                    ((JLabel) panel.getComponent(panel.getComponentCount() - 1))
+                        .setText(success ? "Atualização feita com êxito" : "Atualização falhou");
+                    if (success) { exibirMetadadosColunas(sTableName); }   
+                }
+            });
+            pPanelDeBusca.add(botaoUpdate);
+            pPanelDeBusca.add(new JLabel());
+            pPanelDeBusca.setLayout(new GridLayout(pkCols.size() + size + 2, 15, 2, 2));
+            
         } catch (SQLException e) {
             jtAreaDeStatus.setText("Erro: \"" + e + "\"");
         }
